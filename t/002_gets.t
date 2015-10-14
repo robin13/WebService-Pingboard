@@ -9,27 +9,30 @@ Log::Log4perl->easy_init($DEBUG);
 use YAML;
 
 if( not $ENV{PINGBOARD_ACCESS_TOKEN} ){
-    fail( "!!! Environment variable PINGBOARD_ACCESS_TOKEN was not defined, so live tests not being executed !!!" );
+    pass( "!! Please define environment PINGBOARD_ACCESS_TOKEN=[your oauth token] to run live tests against the Pingboard API" );
     done_testing();
     exit(0);
 }
 
 # Setting more aggressive timeout/backoff/retries so that testing does not take forever
 my $p = API::Pingboard->new(
-    access_token    => $ENV{PINGBOARD_ACCESS_TOKEN},
-    timeout         => 5,
-    default_backoff => 2,
-    max_tries       => 1,
+    access_token        => $ENV{PINGBOARD_ACCESS_TOKEN},
+    timeout             => 5,
+    default_backoff     => 2,
+    max_tries           => 1,
+    default_page_size   => 55,
     );
+my $limit = 50;
 
 my @users;
 # Test get_users method
 if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_USERS} ){
     try{
         # Get a list of users
-        @users = $p->get_users( size => 1 );
+        @users = $p->get_users( limit => $limit );
         diag( "Got " . scalar( @users ) . " users using the get_users method" );
         ok( scalar( @users ) > 0, "get_users: list" );
+        ok( scalar( @users ) <= $limit, "get_users: list length <= limit" );
 
         # Select a random user id from the list of users
         my $user_from_list = $users[ int( rand( $#users ) ) ];
@@ -47,9 +50,10 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_USERS} ){
 if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_GROUPS} ){
     try{
         # Get list of groups
-        my @groups = $p->get_groups( size => 1 );
+        my @groups = $p->get_groups( limit => $limit );
         diag( "Got " . scalar( @groups ) . " groups using the get_groups method" );
         ok( scalar( @groups ) > 0, "get_groups: list" );
+        ok( scalar( @groups ) <= $limit, "get_groups: list length <= limit" );
 
         # Select a random group id from the list of groups
         my $group_from_list = $groups[ int( rand( $#groups ) ) ];
@@ -68,9 +72,10 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_GROUPS} ){
 # This test is disable by default for now until this bug is fixed
 if( 0 and not $ENV{TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS} ){
     try{
-        my @custom_fields = $p->get_custom_fields( size => 1 );
+        my @custom_fields = $p->get_custom_fields( limit => $limit );
         diag( "Got " . scalar( @custom_fields ) . " custom_fields using the get_custom_fields method" );
-        ok( scalar( @custom_fields ) > 0, "custom_field: list" );
+        ok( scalar( @custom_fields ) > 0, "get_custom_fields: list" );
+        ok( scalar( @custom_fields ) <= $limit, "get_custom_fields: list length <= limit" );
 
         # Select a random custom_field id from the list of custom_fields
         my $custom_field_from_list = $custom_fields[ int( rand( $#custom_fields ) ) ];
@@ -78,9 +83,9 @@ if( 0 and not $ENV{TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS} ){
         # Get a single custom_field by id
         diag( "Getting custom_field by id: " . $custom_field_from_list->{id} );
         my( $custom_field ) = $p->get_custom_fields( id => $custom_field_from_list->{id} );
-        is( $custom_field->{id}, $custom_field_from_list->{id}, "custom_field: single id" );
+        is( $custom_field->{id}, $custom_field_from_list->{id}, "get_custom_field: single id" );
     }catch{
-        fail( "custom_fields:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS=1" )
+        fail( "get_custom_fields:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS=1" )
     };
 }
 
@@ -114,9 +119,10 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS} ){
 # Test get_linked_account_providers
 if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS} ){
     try{
-        my @linked_account_providers = $p->get_linked_account_providers( size => 1 );
+        my @linked_account_providers = $p->get_linked_account_providers( limit => $limit );
         diag( "Got " . scalar( @linked_account_providers ) . " linked_account_providers" );
         ok( scalar( @linked_account_providers ) > 0, "get_linked_account_providers: list" );
+        ok( scalar( @linked_account_providers) <= $limit, "get_linked_account_providers: list length <= limit" );
 
         # Select a random custom_field id from the list of linked_account_providers
         my $linked_account_provider_from_list = $linked_account_providers[ int( rand( $#linked_account_providers ) ) ];
@@ -124,18 +130,19 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS} ){
         # Get a single linked_account_provider by id
         diag( "Getting linked_account_provider by id: " . $linked_account_provider_from_list->{id} );
         my( $linked_account ) = $p->get_linked_account_providers( id => $linked_account_provider_from_list->{id} );
-        is( $linked_account->{id}, $linked_account_provider_from_list->{id}, "linked_account_providers: single id" );
+        is( $linked_account->{id}, $linked_account_provider_from_list->{id}, "get_linked_account_providers: single id" );
     }catch{
-        fail( "linked_account_providers:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS=1" )
+        fail( "get_linked_account_providers:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS=1" )
     };
 }
 
 # Test get_statuses
 if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_STATUSES} ){
     try{
-        my @statuses = $p->get_statuses( size => 1 );
+        my @statuses = $p->get_statuses( limit => $limit );
         diag( "Got " . scalar( @statuses ) . " statuses" );
         ok( scalar( @statuses ) > 0, "get_statuses: list" );
+        ok( scalar( @statuses ) <= $limit, "get_statuses: list length <= limit" );
 
         # Select a random custom_field id from the list of statuses
         my $status_from_list = $statuses[ int( rand( $#statuses ) ) ];

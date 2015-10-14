@@ -10,7 +10,7 @@ use JSON::MaybeXS;
 use YAML;
 use Encode;
 
-our $VERSION = 0.002;
+our $VERSION = 0.003;
 
 =head1 NAME
 
@@ -91,15 +91,29 @@ has 'timeout' => (
     );
 
 =item default_backoff
+
 Optional.  Default: 10
 Time in seconds to back off before retrying request.
 If a 429 response is given and the Retry-Time header is provided by the api this will be overridden.
+
 =cut
 has 'default_backoff' => (
     is          => 'ro',
     isa         => 'Int',
     required    => 1,
     default     => 10,
+    );
+
+=item default_page_size
+
+Optional. Default: 100
+
+=cut
+has 'default_page_size' => (
+    is          => 'rw',
+    isa         => 'Int',
+    required    => 1,
+    default     => 100,
     );
 
 =item retry_on_status
@@ -209,8 +223,9 @@ The user id to get
 sub get_users {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	=> { isa    => 'Int', optional => 1 },
-        size    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Int', optional => 1 },
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
 	);
     $params{field}  = 'users';
     $params{path}   = 'users' . ( $params{id} ? '/' . $params{id} : '' );
@@ -231,8 +246,9 @@ The group id to get
 sub get_groups {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	=> { isa    => 'Int', optional => 1 },
-        size    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Int', optional => 1 },
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
 	);
     $params{field}  = 'groups';
     $params{path}   = 'groups' . ( $params{id} ? '/' . $params{id} : '' );
@@ -253,8 +269,9 @@ The resource id to get
 sub get_custom_fields {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	=> { isa    => 'Int', optional => 1 },
-        size    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Int', optional => 1 },
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
 	);
     $params{field}  = 'custom_fields';
     $params{path}   = 'custom_fields' . ( $params{id} ? '/' . $params{id} : '' );
@@ -296,8 +313,9 @@ The resource id to get
 sub get_linked_account_providers {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	=> { isa    => 'Int', optional => 1 },
-        size    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Int', optional => 1 },
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
 	);
     $params{field}  = 'linked_account_providers';
     $params{path}   = 'linked_account_providers' . ( $params{id} ? '/' . $params{id} : '' );
@@ -318,8 +336,9 @@ The resource id to get
 sub get_statuses {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	=> { isa    => 'Int', optional => 1 },
-        size    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Int', optional => 1 },
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
 	);
     $params{field}  = 'statuses';
     $params{path}   = 'statuses' . ( $params{id} ? '/' . $params{id} : '' );
@@ -358,23 +377,30 @@ sub clear_cache_object_id {
 sub _paged_request_from_api {
     my ( $self, %params ) = validated_hash(
         \@_,
-        method	=> { isa => 'Str', optional => 1, default => 'GET' },
-	path	=> { isa => 'Str' },
-        field   => { isa => 'Str' },
-        size    => { isa => 'Int', optional => 1 },
-        body    => { isa => 'Str', optional => 1 },
+        method	    => { isa => 'Str', optional => 1, default => 'GET' },
+	path	    => { isa => 'Str' },
+        field       => { isa => 'Str' },
+        limit       => { isa => 'Int', optional => 1 },
+        page_size   => { isa => 'Int', optional => 1 },
+        body        => { isa => 'Str', optional => 1 },
     );
     my @results;
     my $page = 1;
+
+    $params{page_size} ||= $self->default_page_size;
+    if( $params{limit} and $params{limit} < $params{page_size} ){
+        $params{page_size} = $params{limit};
+    }
+
     my $response = undef;
     do{
         $response = $self->_request_from_api(
             method      => $params{method},
-            path        => $params{path} . ( $page > 1 ? ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page : '' ),
+            path        => $params{path} . ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page . '&page_size=' . $params{page_size},
             );
 	push( @results, @{ $response->{$params{field} } } );
 	$page++;
-      }while( $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and ( not $params{size} or scalar( @results ) < $params{size} ) );
+      }while( $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and ( not $params{limit} or scalar( @results ) < $params{limit} ) );
     return @results;
 }
 
