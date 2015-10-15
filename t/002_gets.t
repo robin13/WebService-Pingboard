@@ -18,7 +18,7 @@ if( not $ENV{PINGBOARD_ACCESS_TOKEN} ){
 # Setting more aggressive timeout/backoff/retries so that testing does not take forever
 my $p = WebService::Pingboard->new(
     access_token        => $ENV{PINGBOARD_ACCESS_TOKEN},
-    timeout             => 5,
+    timeout             => 10,
     default_backoff     => 2,
     max_tries           => 1,
     default_page_size   => 55,
