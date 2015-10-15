@@ -1,21 +1,22 @@
 use strict;
 use warnings;
-use API::Pingboard;
+use WebService::Pingboard;
 use Test::More;
 use Log::Log4perl qw(:easy);
 use Try::Tiny;
-#Log::Log4perl->easy_init($WARN);
-Log::Log4perl->easy_init($DEBUG);
+Log::Log4perl->easy_init($WARN);
+#Log::Log4perl->easy_init($DEBUG);
 use YAML;
 
 if( not $ENV{PINGBOARD_ACCESS_TOKEN} ){
-    pass( "!! Please define environment PINGBOARD_ACCESS_TOKEN=[your oauth token] to run live tests against the Pingboard API" );
+    diag( "!! Please define environment PINGBOARD_ACCESS_TOKEN=[your oauth token] to run live tests against the Pingboard API" );
+    pass( 'no PINGBOARD_ACCESS_TOKEN defined so no test possible' );
     done_testing();
     exit(0);
 }
 
 # Setting more aggressive timeout/backoff/retries so that testing does not take forever
-my $p = API::Pingboard->new(
+my $p = WebService::Pingboard->new(
     access_token        => $ENV{PINGBOARD_ACCESS_TOKEN},
     timeout             => 5,
     default_backoff     => 2,

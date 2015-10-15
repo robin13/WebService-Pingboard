@@ -1,5 +1,5 @@
-package API::Pingboard;
-# ABSTRACT: API interface to Pingboard
+package WebService::Pingboard;
+# ABSTRACT: Interface to Pingboard API
 use Moose;
 use MooseX::Params::Validate;
 use MooseX::WithCache;
@@ -14,7 +14,7 @@ our $VERSION = 0.003;
 
 =head1 NAME
 
-API::Pingboard
+WebService::Pingboard
 
 =head1 DESCRIPTION
 
@@ -136,12 +136,12 @@ has 'max_tries' => (
     isa         => 'Int',
     );
 
-=item pingboard_api_url
+=item api_url
 
 Required.
 
 =cut
-has 'pingboard_api_url' => (
+has 'api_url' => (
     is		=> 'ro',
     isa		=> 'Str',
     required	=> 1,
@@ -419,7 +419,7 @@ sub _request_from_api {
     if( $params{uri} ){
         $url = $params{uri};
     }elsif( $params{path} ){
-        $url =  $self->pingboard_api_url . $params{path};
+        $url =  $self->api_url . $params{path};
     }else{
         $self->log->logdie( "Cannot request without either a path or uri" );
     }
