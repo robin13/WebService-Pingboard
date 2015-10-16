@@ -11,7 +11,7 @@ use YAML;
 use Encode;
 use URI::Encode qw/uri_encode/;
 
-our $VERSION = 0.004;
+our $VERSION = 0.005;
 
 =head1 NAME
 
@@ -152,7 +152,7 @@ has 'api_url' => (
     is		=> 'ro',
     isa		=> 'Str',
     required	=> 1,
-    default     => 'https://app.pingboard.com/api/v2/',
+    default     => 'https://app.pingboard.com/api/v2',
     );
 
 =item user_agent
@@ -258,14 +258,16 @@ sub valid_access_token {
         $data = $self->_request_from_api(
             method      => 'POST',
             headers     => $h,
-            uri         => sprintf( "https://app.pingboard.com/oauth/token?username=%s&refresh_token=%s&grant_type=refresh_token", $params{username}, $params{refresh_token} ),
+            uri         => 'https://app.pingboard.com/oauth/token',
+            options     => sprintf( 'username=%s&refresh_token=%s&grant_type=refresh_token', $params{username}, $params{refresh_token} ),
             );
     }elsif( $params{username} and $params{password} ){
         $self->log->debug( "Requesting fresh access_token with username and password for: $params{username}" );
         $data = $self->_request_from_api(
             method      => 'POST',
             headers     => $h,
-            uri         => sprintf( "https://app.pingboard.com/oauth/token?username=%s&password=%s&grant_type=password", $params{username}, uri_encode( $params{password} ) ),
+            uri         => 'https://app.pingboard.com/oauth/token',
+            options     => sprintf( 'username=%s&password=%s&grant_type=password', $params{username}, uri_encode( $params{password} ) ),
             );
     }else{
         die( "Cannot create valid access_token without a refresh_token or username and password" );
@@ -337,10 +339,10 @@ sub get_users {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'users';
-    $params{path}   = 'users' . ( $params{id} ? '/' . $params{id} : '' );
+    $params{path}   = '/users' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -371,10 +373,10 @@ sub get_groups {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'groups';
-    $params{path}   = 'groups' . ( $params{id} ? '/' . $params{id} : '' );
+    $params{path}   = '/groups' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -405,10 +407,10 @@ sub get_custom_fields {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'custom_fields';
-    $params{path}   = 'custom_fields' . ( $params{id} ? '/' . $params{id} : '' );
+    $params{path}   = '/custom_fields' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -429,10 +431,10 @@ sub get_linked_accounts {
     my ( $self, %params ) = validated_hash(
         \@_,
         id	=> { isa    => 'Int'},
-        options     => { isa => 'Str', optional => 1 },
+        options => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'linked_accounts';
-    $params{path}   = 'linked_accounts/' . $params{id};
+    $params{path}   = '/linked_accounts/' . $params{id};
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -463,10 +465,10 @@ sub get_linked_account_providers {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'linked_account_providers';
-    $params{path}   = 'linked_account_providers' . ( $params{id} ? '/' . $params{id} : '' );
+    $params{path}   = '/linked_account_providers' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -497,10 +499,10 @@ sub get_statuses {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'statuses';
-    $params{path}   = 'statuses' . ( $params{id} ? '/' . $params{id} : '' );
+    $params{path}   = '/statuses' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
     return $self->_paged_request_from_api( %params );
 }
@@ -541,7 +543,7 @@ sub _paged_request_from_api {
         field       => { isa => 'Str' },
         limit       => { isa => 'Int', optional => 1 },
         page_size   => { isa => 'Int', optional => 1 },
-        options     => { isa => 'Str', optional => 1, default => '' },
+        options     => { isa => 'Str', optional => 1 },
         body        => { isa => 'Str', optional => 1 },
     );
     my @results;
@@ -554,11 +556,12 @@ sub _paged_request_from_api {
 
     my $response = undef;
     do{
-        $response = $self->_request_from_api(
+        my %request_params = ( 
             method      => $params{method},
-	    options     => $params{options},
             path        => $params{path} . ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page . '&page_size=' . $params{page_size},
             );
+        $request_params{options} = $params{options} if( $params{options} );
+        $response = $self->_request_from_api( %request_params );
 	push( @results, @{ $response->{$params{field} } } );
 	$page++;
       }while( $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and ( not $params{limit} or scalar( @results ) < $params{limit} ) );
@@ -574,17 +577,12 @@ sub _request_from_api {
         uri     => { isa => 'Str', optional => 1 },
         body    => { isa => 'Str', optional => 1 },
         headers => { isa => 'HTTP::Headers', optional => 1 },
-        options => { isa => 'Str', optional => 1, default => '' },
+        options => { isa => 'Str', optional => 1 },
         fields  => { isa => 'HashRef', optional => 1 },
     );
-    my $url;
-    if( $params{uri} ){
-        $url = $params{uri};
-    }elsif( $params{path} ){
-        $url =  $self->api_url . $params{path} . '&' . $params{options};
-    }else{
-        $self->log->logdie( "Cannot request without either a path or uri" );
-    }
+    my $url = $params{uri} || $self->api_url;
+    $url .=  $params{path} if( $params{path} );
+    $url .= ( $url =~ m/\?/ ? '&' : '?' )  . $params{options} if( $params{options} );
 
     my $request = HTTP::Request->new(
         $params{method},
