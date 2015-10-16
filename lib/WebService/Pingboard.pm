@@ -226,6 +226,7 @@ sub get_users {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'users';
     $params{path}   = 'users' . ( $params{id} ? '/' . $params{id} : '' );
@@ -249,6 +250,7 @@ sub get_groups {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'groups';
     $params{path}   = 'groups' . ( $params{id} ? '/' . $params{id} : '' );
@@ -272,6 +274,7 @@ sub get_custom_fields {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'custom_fields';
     $params{path}   = 'custom_fields' . ( $params{id} ? '/' . $params{id} : '' );
@@ -293,6 +296,7 @@ sub get_linked_accounts {
     my ( $self, %params ) = validated_hash(
         \@_,
         id	=> { isa    => 'Int'},
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'linked_accounts';
     $params{path}   = 'linked_accounts/' . $params{id};
@@ -316,6 +320,7 @@ sub get_linked_account_providers {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'linked_account_providers';
     $params{path}   = 'linked_account_providers' . ( $params{id} ? '/' . $params{id} : '' );
@@ -339,6 +344,7 @@ sub get_statuses {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1 },
 	);
     $params{field}  = 'statuses';
     $params{path}   = 'statuses' . ( $params{id} ? '/' . $params{id} : '' );
@@ -382,6 +388,7 @@ sub _paged_request_from_api {
         field       => { isa => 'Str' },
         limit       => { isa => 'Int', optional => 1 },
         page_size   => { isa => 'Int', optional => 1 },
+        options     => { isa => 'Str', optional => 1, default => '' },
         body        => { isa => 'Str', optional => 1 },
     );
     my @results;
@@ -396,6 +403,7 @@ sub _paged_request_from_api {
     do{
         $response = $self->_request_from_api(
             method      => $params{method},
+	    options     => $params{options},
             path        => $params{path} . ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page . '&page_size=' . $params{page_size},
             );
 	push( @results, @{ $response->{$params{field} } } );
@@ -413,13 +421,14 @@ sub _request_from_api {
         uri     => { isa => 'Str', optional => 1 },
         body    => { isa => 'Str', optional => 1 },
         headers => { isa => 'HTTP::Headers', optional => 1 },
+        options => { isa => 'Str', optional => 1, default => '' },
         fields  => { isa => 'HashRef', optional => 1 },
     );
     my $url;
     if( $params{uri} ){
         $url = $params{uri};
     }elsif( $params{path} ){
-        $url =  $self->api_url . $params{path};
+        $url =  $self->api_url . $params{path} . '&' . $params{options};
     }else{
         $self->log->logdie( "Cannot request without either a path or uri" );
     }
