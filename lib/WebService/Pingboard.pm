@@ -9,8 +9,9 @@ use HTTP::Headers;
 use JSON::MaybeXS;
 use YAML;
 use Encode;
+use URI::Encode qw/uri_encode/;
 
-our $VERSION = 0.003;
+our $VERSION = 0.004;
 
 =head1 NAME
 
@@ -45,18 +46,17 @@ with 'MooseX::WithCache' => {
     backend => 'Cache::FileCache',
 };
 
-=item access_token
+=item refresh_token
 
-Required.
 
 =cut
-has 'access_token' => (
+has 'refresh_token' => (
     is          => 'ro',
     isa         => 'Str',
-    required    => 1,
+    required    => 0,
+    writer      => '_set_refresh_token',
     );
 
-# TODO Username and password login not working yet
 =item password
 
 
@@ -65,6 +65,7 @@ has 'password' => (
     is          => 'ro',
     isa         => 'Str',
     required    => 0,
+    writer      => '_set_password',
     );
 
 =item username
@@ -75,6 +76,7 @@ has 'username' => (
     is          => 'ro',
     isa         => 'Str',
     required    => 0,
+    writer      => '_set_username',
     );
 
 =item timeout
@@ -117,8 +119,10 @@ has 'default_page_size' => (
     );
 
 =item retry_on_status
+
 Optional. Default: [ 429, 500, 502, 503, 504 ]
 Which http response codes should we retry on?
+
 =cut
 has 'retry_on_status' => (
     is          => 'ro',
@@ -128,8 +132,11 @@ has 'retry_on_status' => (
     );
 
 =item max_tries
+
 Optional.  Default: undef
+
 Limit maximum number of times a query should be attempted before failing.  If undefined then unlimited retries
+
 =cut
 has 'max_tries' => (
     is          => 'ro',
@@ -138,7 +145,7 @@ has 'max_tries' => (
 
 =item api_url
 
-Required.
+Default: https://app.pingboard.com/api/v2/
 
 =cut
 has 'api_url' => (
@@ -163,13 +170,43 @@ has 'user_agent' => (
 
     );
 
-has 'default_headers' => (
-    is		=> 'ro',
-    isa		=> 'HTTP::Headers',
-    required	=> 1,
-    lazy	=> 1,
-    builder	=> '_build_default_headers',
+=item loglevel
+
+Optionally override the global loglevel for this module
+
+=cut
+
+has 'loglevel' => (
+    is		=> 'rw',
+    isa		=> 'Str',
+    trigger     => \&_set_loglevel,
     );
+
+has '_access_token' => (
+    is          => 'ro',
+    isa         => 'Str',
+    required    => 0,
+    writer      => '_set_access_token',
+    );
+
+has '_headers' => (
+    is          => 'ro',
+    isa         => 'HTTP::Headers',
+    writer      => '_set_headers',
+    );
+
+has '_access_token_expires' => (
+    is          => 'ro',
+    isa         => 'Int',
+    required    => 0,
+    writer      => '_set_access_token_expires',
+    );
+
+sub _set_loglevel {
+    my( $self, $level ) = @_;
+    $self->log->warn( "Setting new loglevel: $level" );
+    $self->log->level( $level );
+}
 
 sub _build_user_agent {
     my $self = shift;
@@ -181,33 +218,97 @@ sub _build_user_agent {
     return $ua;
 }
 
-sub _build_default_headers {
-    my $self = shift;
-    my $h = HTTP::Headers->new();
-    $h->header( 'Content-Type'	=> "application/json" );
-    $h->header( 'Accept'	=> "application/json" );
-    # Only oauth works for now
-    $h->header( 'Authorization' => "Bearer " . $self->access_token );
-    return $h;
-}
-
-
 =back
 
 =head1 METHODS
 
 =over 4
 
-=item init
+=item valid_access_token
 
-Create the user agent.  As these are built lazily, initialising manually can avoid
-errors thrown when building them later being silently swallowed in try/catch blocks.
+Will return a valid access token.
 
 =cut
 
-sub init {
+sub valid_access_token {
+    my ( $self, %params ) = validated_hash(
+        \@_,
+        username        => { isa    => 'Str', optional => 1 },
+        password        => { isa    => 'Str', optional => 1 },
+        refresh_token   => { isa    => 'Str', optional => 1 },
+	);
+
+    # If we still have a valid access token, use this
+    #if( $self->_access_token and $self->_access_token_expires > ( time() + 5 ) ){
+    if( $self->access_token_is_valid ){
+        return $self->_access_token;
+    }
+
+    $params{username}       ||= $self->username;
+    $params{password}       ||= $self->password;
+    $params{refresh_token}  ||= $self->refresh_token;
+
+    my $h = HTTP::Headers->new();
+    $h->header( 'Content-Type'	=> "application/json" );
+    $h->header( 'Accept'	=> "application/json" );
+
+    my $data;
+    if( $params{username} and $params{refresh_token} ){
+        $self->log->debug( "Requesting fresh access_token with refresh_token: $params{refresh_token}" );
+        $data = $self->_request_from_api(
+            method      => 'POST',
+            headers     => $h,
+            uri         => sprintf( "https://app.pingboard.com/oauth/token?username=%s&refresh_token=%s&grant_type=refresh_token", $params{username}, $params{refresh_token} ),
+            );
+    }elsif( $params{username} and $params{password} ){
+        $self->log->debug( "Requesting fresh access_token with username and password for: $params{username}" );
+        $data = $self->_request_from_api(
+            method      => 'POST',
+            headers     => $h,
+            uri         => sprintf( "https://app.pingboard.com/oauth/token?username=%s&password=%s&grant_type=password", $params{username}, uri_encode( $params{password} ) ),
+            );
+    }else{
+        die( "Cannot create valid access_token without a refresh_token or username and password" );
+    }
+    $self->log->debug( "Response from getting access_token:\n" . Dump( $data ) );
+    my $expire_time = time() + $data->{expires_in};
+    $self->log->debug( "Got new access_token: $data->{access_token} which expires at " . localtime( $expire_time ) );
+    if( $data->{refresh_token} ){
+        $self->log->debug( "Got new refresh_token: $data->{refresh_token}" );
+        $self->_set_refresh_token( $data->{refresh_token} );
+    }
+    $self->_set_access_token( $data->{access_token} );
+    $self->_set_access_token_expires( $expire_time );
+    return $data->{access_token};
+}
+
+=item access_token_is_valid
+
+Returns true if a valid access token exists (with at least 5 seconds validity remaining).
+
+=cut
+
+sub access_token_is_valid {
     my $self = shift;
-    my $ua = $self->user_agent;
+    return 1 if( $self->_access_token and $self->_access_token_expires > ( time() + 5 ) );
+    return 0;
+}
+
+=item headers
+
+Returns a HTTP::Headers object with the Authorization header set with a valid access token
+
+=cut
+sub headers {
+    my $self = shift;
+    if( not $self->access_token_is_valid or not $self->_headers ){
+        my $h = HTTP::Headers->new();
+        $h->header( 'Content-Type'	=> "application/json" );
+        $h->header( 'Accept'	=> "application/json" );
+        $h->header( 'Authorization' => "Bearer " . $self->valid_access_token );
+        $self->_set_headers( $h );
+    }
+    return $self->_headers;
 }
 
 =item get_users
@@ -216,7 +317,17 @@ sub init {
 
 =item id
 
-The user id to get
+Optional. The user id to get
+
+=item limit
+
+Optional. Maximum number of entries to fetch.
+
+=item page_size
+
+Optional.  Page size to use when fetching.
+
+=back
 
 =cut
 
@@ -241,6 +352,16 @@ sub get_users {
 
 The group id to get
 
+=item limit
+
+Optional. Maximum number of entries to fetch.
+
+=item page_size
+
+Optional.  Page size to use when fetching.
+
+=back
+
 =cut
 
 sub get_groups {
@@ -263,6 +384,16 @@ sub get_groups {
 =item id (optional)
 
 The resource id to get
+
+=item limit
+
+Optional. Maximum number of entries to fetch.
+
+=item page_size
+
+Optional.  Page size to use when fetching.
+
+=back
 
 =cut
 
@@ -287,6 +418,8 @@ sub get_custom_fields {
 
 The resource id to get
 
+=back
+
 =cut
 
 sub get_linked_accounts {
@@ -307,6 +440,16 @@ sub get_linked_accounts {
 =item id (optional)
 
 The resource id to get
+
+=item limit
+
+Optional. Maximum number of entries to fetch.
+
+=item page_size
+
+Optional.  Page size to use when fetching.
+
+=back
 
 =cut
 
@@ -331,6 +474,16 @@ sub get_linked_account_providers {
 
 The resource id to get
 
+=item limit
+
+Optional. Maximum number of entries to fetch.
+
+=item page_size
+
+Optional.  Page size to use when fetching.
+
+=back
+
 =cut
 
 sub get_statuses {
@@ -353,7 +506,7 @@ Clears an object from the cache.
 
 =over 4
 
-=item user_id
+=item object_id
 
 Required.  Object id to clear from the cache.
 
@@ -427,7 +580,7 @@ sub _request_from_api {
     my $request = HTTP::Request->new(
         $params{method},
         $url,
-        $params{headers} || $self->default_headers,
+        $params{headers} || $self->headers,
         );
     $request->content( $params{body} ) if( $params{body} );
 

@@ -8,21 +8,31 @@ Log::Log4perl->easy_init($WARN);
 #Log::Log4perl->easy_init($DEBUG);
 use YAML;
 
-if( not $ENV{PINGBOARD_ACCESS_TOKEN} ){
-    diag( "!! Please define environment PINGBOARD_ACCESS_TOKEN=[your oauth token] to run live tests against the Pingboard API" );
-    pass( 'no PINGBOARD_ACCESS_TOKEN defined so no test possible' );
+if( not $ENV{PINGBOARD_USERNAME} and ( $ENV{PINGBOARD_REFRESH_TOKEN} or $ENV{PINGBOARD_PASSWORD} ) ){
+    diag( "!! Cannot run live tests against Pingboard without login credentials !!" );
+    diag( "Please define environment variables" );
+    diag( "PINGBOARD_USERNAME=[your email address] and PINGBOARD_REFRESH_TOKEN=[oauth refresh token]" );
+    diag( "   or" );
+    diag( "PINGBOARD_USERNAME=[your email address] and PINGBOARD_PASSWORD=[your password]" );
+    diag( "in order to run live tests against the Pingboard API" );
+    pass( 'no PINGBOARD_REFRESH_TOKEN defined so no test possible' );
     done_testing();
     exit(0);
 }
 
 # Setting more aggressive timeout/backoff/retries so that testing does not take forever
-my $p = WebService::Pingboard->new(
-    access_token        => $ENV{PINGBOARD_ACCESS_TOKEN},
+my %pingboard_params = (
     timeout             => 10,
     default_backoff     => 2,
     max_tries           => 1,
     default_page_size   => 55,
     );
+
+$pingboard_params{refresh_token}    = $ENV{PINGBOARD_REFRESH_TOKEN} if $ENV{PINGBOARD_REFRESH_TOKEN};
+$pingboard_params{username}         = $ENV{PINGBOARD_USERNAME} if $ENV{PINGBOARD_USERNAME};
+$pingboard_params{password}         = $ENV{PINGBOARD_PASSWORD} if $ENV{PINGBOARD_PASSWORD};
+
+my $p = WebService::Pingboard->new( %pingboard_params );
 my $limit = 50;
 
 my @users;
