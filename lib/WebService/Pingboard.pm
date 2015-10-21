@@ -404,7 +404,7 @@ Optional.  Page size to use when fetching.
 sub get_custom_fields {
     my ( $self, %params ) = validated_hash(
         \@_,
-        id	    => { isa    => 'Int', optional => 1 },
+        id	    => { isa    => 'Str', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
         options     => { isa    => 'Str', optional => 1 },

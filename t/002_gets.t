@@ -8,7 +8,7 @@ Log::Log4perl->easy_init($WARN);
 #Log::Log4perl->easy_init($DEBUG);
 use YAML;
 
-if( not $ENV{PINGBOARD_USERNAME} and ( $ENV{PINGBOARD_REFRESH_TOKEN} or $ENV{PINGBOARD_PASSWORD} ) ){
+if( not $ENV{PINGBOARD_USERNAME} and not ( $ENV{PINGBOARD_REFRESH_TOKEN} or $ENV{PINGBOARD_PASSWORD} ) ){
     diag( "!! Cannot run live tests against Pingboard without login credentials !!" );
     diag( "Please define environment variables" );
     diag( "PINGBOARD_USERNAME=[your email address] and PINGBOARD_REFRESH_TOKEN=[oauth refresh token]" );
