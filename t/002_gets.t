@@ -5,7 +5,6 @@ use Test::More;
 use Log::Log4perl qw(:easy);
 use Try::Tiny;
 Log::Log4perl->easy_init($WARN);
-#Log::Log4perl->easy_init($DEBUG);
 use YAML;
 
 if( not $ENV{PINGBOARD_USERNAME} and not ( $ENV{PINGBOARD_REFRESH_TOKEN} or $ENV{PINGBOARD_PASSWORD} ) ){
@@ -20,6 +19,8 @@ if( not $ENV{PINGBOARD_USERNAME} and not ( $ENV{PINGBOARD_REFRESH_TOKEN} or $ENV
     exit(0);
 }
 
+    
+
 # Setting more aggressive timeout/backoff/retries so that testing does not take forever
 my %pingboard_params = (
     timeout             => 10,
@@ -27,6 +28,7 @@ my %pingboard_params = (
     max_tries           => 1,
     default_page_size   => 55,
     );
+$pingboard_params{loglevel}         = $ENV{TEST_PINGBOARD_LOGLEVEL} if $ENV{TEST_PINGBOARD_LOGLEVEL};
 
 $pingboard_params{refresh_token}    = $ENV{PINGBOARD_REFRESH_TOKEN} if $ENV{PINGBOARD_REFRESH_TOKEN};
 $pingboard_params{username}         = $ENV{PINGBOARD_USERNAME} if $ENV{PINGBOARD_USERNAME};
@@ -37,7 +39,7 @@ my $limit = 50;
 
 my @users;
 # Test get_users method
-if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_USERS} ){
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_USERS} ){
     try{
         # Get a list of users
         @users = $p->get_users( limit => $limit );
@@ -53,12 +55,12 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_USERS} ){
         my( $user ) = $p->get_users( id => $user_from_list->{id} );
         is( $user->{id}, $user_from_list->{id}, "get_users: single id" );
     }catch{
-        fail( "get_users:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_USERS=1" )
+        fail( "get_users:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_USERS=1" )
     };
 }
 
 # Test get_groups method
-if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_GROUPS} ){
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_GROUPS} ){
     try{
         # Get list of groups
         my @groups = $p->get_groups( limit => $limit );
@@ -74,14 +76,14 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_GROUPS} ){
         my( $group ) = $p->get_groups( id => $group_from_list->{id} );
         is( $group->{id}, $group_from_list->{id}, "get_groups: single id" );
     }catch{
-        fail( "get_groups:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_GROUPS=1" )
+        fail( "get_groups:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_GROUPS=1" )
     };
 }
 
 # Test get_custom_fields
 # !!! get_custom_fields api always responds with a 500 error...
 # This test is disable by default for now until this bug is fixed
-if( 0 and not $ENV{TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS} ){
+if( 0 and not $ENV{TEST_PINGBOARD_SKIP_GET_CUSTOM_FIELDS} ){
     try{
         my @custom_fields = $p->get_custom_fields( limit => $limit );
         diag( "Got " . scalar( @custom_fields ) . " custom_fields using the get_custom_fields method" );
@@ -96,12 +98,12 @@ if( 0 and not $ENV{TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS} ){
         my( $custom_field ) = $p->get_custom_fields( id => $custom_field_from_list->{id} );
         is( $custom_field->{id}, $custom_field_from_list->{id}, "get_custom_field: single id" );
     }catch{
-        fail( "get_custom_fields:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_CUSTOM_FIELDS=1" )
+        fail( "get_custom_fields:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_CUSTOM_FIELDS=1" )
     };
 }
 
 # Test get_linked_accounts
-if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS} ){
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS} ){
     try{
         # Using the array of users from above, look for one which has linked_accounts
         if( scalar( @users ) == 0 ){
@@ -123,12 +125,12 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS} ){
             }
         }
     }catch{
-        fail( "linked_accounts:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS=1" )
+        fail( "linked_accounts:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_LINKED_ACCOUNTS=1" )
     };
 }
 
 # Test get_linked_account_providers
-if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS} ){
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS} ){
     try{
         my @linked_account_providers = $p->get_linked_account_providers( limit => $limit );
         diag( "Got " . scalar( @linked_account_providers ) . " linked_account_providers" );
@@ -143,12 +145,12 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS} ){
         my( $linked_account ) = $p->get_linked_account_providers( id => $linked_account_provider_from_list->{id} );
         is( $linked_account->{id}, $linked_account_provider_from_list->{id}, "get_linked_account_providers: single id" );
     }catch{
-        fail( "get_linked_account_providers:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS=1" )
+        fail( "get_linked_account_providers:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_LINKED_ACCOUNT_PROVIDERS=1" )
     };
 }
 
 # Test get_statuses
-if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_STATUSES} ){
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_STATUSES} ){
     try{
         my @statuses = $p->get_statuses( limit => $limit );
         diag( "Got " . scalar( @statuses ) . " statuses" );
@@ -163,9 +165,22 @@ if( not $ENV{TEST_API_PINGBOARD_SKIP_GET_STATUSES} ){
         my( $linked_account ) = $p->get_statuses( id => $status_from_list->{id} );
         is( $linked_account->{id}, $status_from_list->{id}, "statuses: single id" );
     }catch{
-        fail( "statuses:\n$_\nTo disable this test set environment TEST_API_PINGBOARD_SKIP_GET_STATUSES=1" )
+        fail( "statuses:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_STATUSES=1" )
     };
 }
+
+# Test get_status_types
+if( not $ENV{TEST_PINGBOARD_SKIP_GET_STATUS_TYPES} ){
+    try{
+        my @status_types = $p->get_status_types( limit => $limit );
+        diag( "Got " . scalar( @status_types ) . " status_types" );
+        ok( scalar( @status_types ) > 0, "get_status_types: list" );
+        ok( scalar( @status_types ) <= $limit, "get_status_types: list length <= limit" );
+    }catch{
+        fail( "status_types:\n$_\nTo disable this test set environment TEST_PINGBOARD_SKIP_GET_STATUS_TYPES=1" )
+    };
+}
+
 
 done_testing();
 exit(0);

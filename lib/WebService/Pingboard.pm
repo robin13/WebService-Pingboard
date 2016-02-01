@@ -6,12 +6,12 @@ use MooseX::WithCache;
 use LWP::UserAgent;
 use HTTP::Request;
 use HTTP::Headers;
-use JSON::MaybeXS;
+use JSON;
 use YAML;
 use Encode;
 use URI::Encode qw/uri_encode/;
 
-our $VERSION = 0.005;
+our $VERSION = 0.006;
 
 =head1 NAME
 
@@ -239,7 +239,6 @@ sub valid_access_token {
 	);
 
     # If we still have a valid access token, use this
-    #if( $self->_access_token and $self->_access_token_expires > ( time() + 5 ) ){
     if( $self->access_token_is_valid ){
         return $self->_access_token;
     }
@@ -272,7 +271,7 @@ sub valid_access_token {
     }else{
         die( "Cannot create valid access_token without a refresh_token or username and password" );
     }
-    $self->log->debug( "Response from getting access_token:\n" . Dump( $data ) );
+    $self->log->trace( "Response from getting access_token:\n" . Dump( $data ) ) if $self->log->is_trace();
     my $expire_time = time() + $data->{expires_in};
     $self->log->debug( "Got new access_token: $data->{access_token} which expires at " . localtime( $expire_time ) );
     if( $data->{refresh_token} ){
@@ -313,13 +312,16 @@ sub headers {
     return $self->_headers;
 }
 
-=item get_users
+=back
 
-=over 4
+=head1 API METHODS
 
-=item id
+This is a module in development - only a subset of all of the API endpoints have been implemented yet.
+The full documentation is available here: http://docs.pingboard.apiary.io/#
 
-Optional. The user id to get
+Any of the methods below which return paged content accept the parameters:
+
+=over 8
 
 =item limit
 
@@ -329,7 +331,20 @@ Optional. Maximum number of entries to fetch.
 
 Optional.  Page size to use when fetching.
 
+=item options
+
+Optional.  Additional url options to add
+
 =back
+
+
+=over 4
+
+=item get_users
+
+Retrieve a list of users
+
+Details: http://docs.pingboard.apiary.io/#reference/users/users-collection/get-users
 
 =cut
 
@@ -349,21 +364,9 @@ sub get_users {
 
 =item get_groups
 
-=over 4
+Get list of user groups
 
-=item id (optional)
-
-The group id to get
-
-=item limit
-
-Optional. Maximum number of entries to fetch.
-
-=item page_size
-
-Optional.  Page size to use when fetching.
-
-=back
+Details: http://docs.pingboard.apiary.io/#reference/groups/groups-collection/get-groups
 
 =cut
 
@@ -383,21 +386,9 @@ sub get_groups {
 
 =item get_custom_fields
 
-=over 4
+Get list of custom fields
 
-=item id (optional)
-
-The resource id to get
-
-=item limit
-
-Optional. Maximum number of entries to fetch.
-
-=item page_size
-
-Optional.  Page size to use when fetching.
-
-=back
+Details: http://docs.pingboard.apiary.io/#reference/custom-fields/custom-fields-collection/get-custom-fields
 
 =cut
 
@@ -417,13 +408,9 @@ sub get_custom_fields {
 
 =item get_linked_accounts
 
-=over 4
+Get linked accounts
 
-=item id
-
-The resource id to get
-
-=back
+Details: http://docs.pingboard.apiary.io/#reference/linked-accounts/linked-account/get-linked-account
 
 =cut
 
@@ -441,21 +428,9 @@ sub get_linked_accounts {
 
 =item get_linked_account_providers
 
-=over 4
+Get linked account providers
 
-=item id (optional)
-
-The resource id to get
-
-=item limit
-
-Optional. Maximum number of entries to fetch.
-
-=item page_size
-
-Optional.  Page size to use when fetching.
-
-=back
+Details: http://docs.pingboard.apiary.io/#reference/linked-account-providers/linked-account-providers-collection/get-linked-account-providers
 
 =cut
 
@@ -473,23 +448,31 @@ sub get_linked_account_providers {
     return $self->_paged_request_from_api( %params );
 }
 
+=item get_status_types
+
+Get status types
+
+Details: http://docs.pingboard.apiary.io/#reference/status-types/status-types-collection/get-status-types
+
+=cut
+
+sub get_status_types {
+    my ( $self, %params ) = validated_hash(
+        \@_,
+        limit       => { isa    => 'Int', optional => 1 },
+        page_size   => { isa    => 'Int', optional => 1 },
+        options     => { isa    => 'Str', optional => 1 },
+	);
+    $params{field}  = 'status_types';
+    $params{path}   = '/status_types';
+    return $self->_paged_request_from_api( %params );
+}
+
 =item get_statuses
 
-=over 4
+Get statuses
 
-=item id (optional)
-
-The resource id to get
-
-=item limit
-
-Optional. Maximum number of entries to fetch.
-
-=item page_size
-
-Optional.  Page size to use when fetching.
-
-=back
+Details: http://docs.pingboard.apiary.io/#reference/statuses/status/update-status
 
 =cut
 
@@ -497,15 +480,118 @@ sub get_statuses {
     my ( $self, %params ) = validated_hash(
         \@_,
         id	    => { isa    => 'Int', optional => 1 },
+        include     => { isa    => 'Int', optional => 1 },
+        user_id     => { isa    => 'Int', optional => 1 },
+        starts_at   => { isa    => 'Str', optional => 1 },
+        ends_at     => { isa    => 'Str', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
         options     => { isa    => 'Str', optional => 1 },
 	);
+    $self->log->debug( "Getting statuses" );
     $params{field}  = 'statuses';
     $params{path}   = '/statuses' . ( $params{id} ? '/' . $params{id} : '' );
     delete( $params{id} );
+    my @options;
+    foreach( qw/include user_id starts_at ends_at/ ){
+        push( @options, $_ . '=' . $params{$_} ) if $params{$_};
+        delete( $params{$_} );
+    }
+    if( scalar( @options ) > 0 ){
+        $params{options} .= ( $params{options} ? '&' : '' ) . join( '&', @options );
+    }
     return $self->_paged_request_from_api( %params );
 }
+
+=item update_status
+ 
+Update a Status resource.
+
+Details: http://docs.pingboard.apiary.io/#reference/statuses/status/get-status
+
+=over 4
+
+=item status
+
+HashRef object of the status - only fields being changed must be defined
+
+=back
+
+=cut
+
+sub update_status {
+    my ( $self, %params ) = validated_hash(
+        \@_,
+        id	    => { isa    => 'Int' },
+        status      => { isa    => 'HashRef' },
+        options     => { isa    => 'Str', optional => 1 },
+	);
+    $self->log->debug( "Updating status: $params{id}" );
+    $params{body}   = encode_json( { "statuses" => $params{status} } );
+    $params{field}  = 'statuses';
+    delete( $params{status} );
+    $params{method} = 'PUT';
+    $params{path}   = '/statuses/' . $params{id};
+    delete( $params{id} );
+    return $self->_paged_request_from_api( %params );
+}
+
+=item delete_status
+
+delete a Status resource.
+
+Details: http://docs.pingboard.apiary.io/#reference/statuses/status/delete-status
+
+=cut
+
+sub delete_status {
+    my ( $self, %params ) = validated_hash(
+        \@_,
+        id	    => { isa    => 'Int' },
+        options     => { isa    => 'Str', optional => 1 },
+	);
+    $self->log->debug( "Deleting status: $params{id}" );
+    $params{method} = 'DELETE';
+    $params{path}   = '/statuses/' . $params{id};
+    delete( $params{id} );
+    my $response = $self->_request_from_api( %params );
+    return;
+}
+
+=item create_status
+
+Create a new Status resource.
+
+Details: http://docs.pingboard.apiary.io/#reference/statuses/statuses-collection/create-status
+
+=over 4
+
+=item status
+
+HashRef of the new status
+
+=back
+
+=cut
+
+sub create_status {
+    my ( $self, %params ) = validated_hash(
+        \@_,
+        options     => { isa    => 'Str', optional => 1 },
+        status      => { isa    => 'HashRef' }
+	);
+    $self->log->debug( "Creating new status for user: " . $params{status}{user_id} );
+
+    $self->log->trace( "Creating new status: \n" . Dump( $params{status} ) ) if $self->log->is_trace;
+    $params{body}   = encode_json( { "statuses" => $params{status} } );
+    $params{field}  = 'statuses';
+    delete( $params{status} );
+    $params{method} = 'POST';
+    $params{path}   = '/statuses';
+    return $self->_paged_request_from_api( %params );
+}
+
+=item 
 
 
 =item clear_cache_object_id
@@ -546,6 +632,8 @@ sub _paged_request_from_api {
         options     => { isa => 'Str', optional => 1 },
         body        => { isa => 'Str', optional => 1 },
     );
+    $self->log->trace( "_paged_request_from_api params:\n" . Dump( \%params ) ) if( $self->log->is_trace );
+    
     my @results;
     my $page = 1;
 
@@ -561,10 +649,14 @@ sub _paged_request_from_api {
             path        => $params{path} . ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page . '&page_size=' . $params{page_size},
             );
         $request_params{options} = $params{options} if( $params{options} );
+        $request_params{body}    = $params{body} if( $params{body} );
+
         $response = $self->_request_from_api( %request_params );
 	push( @results, @{ $response->{$params{field} } } );
 	$page++;
-      }while( $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and ( not $params{limit} or scalar( @results ) < $params{limit} ) );
+      }while( $response->{meta}{$params{field}}{page} and 
+              $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and 
+              ( not $params{limit} or scalar( @results ) < $params{limit} ) );
     return @results;
 }
 
@@ -578,7 +670,6 @@ sub _request_from_api {
         body    => { isa => 'Str', optional => 1 },
         headers => { isa => 'HTTP::Headers', optional => 1 },
         options => { isa => 'Str', optional => 1 },
-        fields  => { isa => 'HashRef', optional => 1 },
     );
     my $url = $params{uri} || $self->api_url;
     $url .=  $params{path} if( $params{path} );
@@ -600,29 +691,12 @@ sub _request_from_api {
     do{
         my $retry_delay = $self->default_backoff;
         $try_count++;
-        # Fields are a special use-case for GET requests:
-        # https://metacpan.org/pod/LWP::UserAgent#ua-get-url-field_name-value
-        if( $params{fields} ){
-            if( $request->method ne 'GET' ){
-                $self->log->logdie( 'Cannot use fields unless the request method is GET' );
-            }
-            my %fields = %{ $params{fields} };
-            my $headers = $request->headers();
-            foreach( keys( %{ $headers } ) ){
-                $fields{$_} = $headers->{$_};
-            }
-            $self->log->trace( "Fields:\n" . Dump( \%fields ) );
-            $response = $self->user_agent->get(
-                $request->uri(),
-                %fields,
-            );
-        }else{
-            $response = $self->user_agent->request( $request );
-        }
+        $response = $self->user_agent->request( $request );
         if( $response->is_success ){
             $retry = 0;
         }else{
             if( grep{ $_ == $response->code } @{ $self->retry_on_status } ){
+                $self->log->debug( Dump( $response ) );
                 if( $response->code == 429 ){
                     # if retry-after header exists and has valid data use this for backoff time
                     if( $response->header( 'Retry-After' ) and $response->header('Retry-After') =~ /^\d+$/ ) {
