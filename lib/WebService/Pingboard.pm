@@ -7,11 +7,13 @@ use LWP::UserAgent;
 use HTTP::Request;
 use HTTP::Headers;
 use JSON;
-use YAML;
+use Class::Date qw/gmdate/;
+use POSIX; #strftime
+use YAML qw/Dump LoadFile DumpFile/;
 use Encode;
 use URI::Encode qw/uri_encode/;
 
-our $VERSION = 0.006;
+our $VERSION = 0.007;
 
 =head1 NAME
 
@@ -48,7 +50,6 @@ with 'MooseX::WithCache' => {
 
 =item refresh_token
 
-
 =cut
 has 'refresh_token' => (
     is          => 'ro',
@@ -58,7 +59,6 @@ has 'refresh_token' => (
     );
 
 =item password
-
 
 =cut
 has 'password' => (
@@ -70,13 +70,21 @@ has 'password' => (
 
 =item username
 
-
 =cut
 has 'username' => (
     is          => 'ro',
     isa         => 'Str',
     required    => 0,
     writer      => '_set_username',
+    );
+
+=item credentials_file
+
+=cut
+has 'credentials_file' => (
+    is          => 'ro',
+    isa         => 'Str',
+    required    => 0,
     );
 
 =item timeout
@@ -233,20 +241,39 @@ Will return a valid access token.
 sub valid_access_token {
     my ( $self, %params ) = validated_hash(
         \@_,
-        username        => { isa    => 'Str', optional => 1 },
-        password        => { isa    => 'Str', optional => 1 },
-        refresh_token   => { isa    => 'Str', optional => 1 },
+        username                => { isa    => 'Str', optional => 1 },
+        password                => { isa    => 'Str', optional => 1 },
+        refresh_token           => { isa    => 'Str', optional => 1 },
+        access_token            => { isa    => 'Str', optional => 1 },
+        access_token_expires    => { isa    => 'Str', optional => 1 },
 	);
-
+    
     # If we still have a valid access token, use this
     if( $self->access_token_is_valid ){
         return $self->_access_token;
     }
 
+    # We do not have valid credentials in the object already, so let's gather from all sources and try again
     $params{username}       ||= $self->username;
     $params{password}       ||= $self->password;
     $params{refresh_token}  ||= $self->refresh_token;
+    $params{access_token}   ||= $self->_access_token;
+    $params{access_token_expires}   ||= $self->_access_token_expires;
+    if( not $params{username} and $self->credentials_file ){
+        my $credentials = LoadFile ( $self->credentials_file );
+        foreach( qw/username password refresh_token access_token access_token_expires/ ){
+            $params{$_} ||= $credentials->{$_} if( $credentials->{$_} );
+        }
+    }
+    $self->_set_access_token_expires( gmdate(  $params{access_token_expires} )->epoch ) if( $params{access_token_expires} );
+    $self->_set_access_token( $params{access_token} ) if( $params{access_token} );
+    
+    # Test again if we now have a valid access token
+    if( $self->access_token_is_valid ){
+        return $self->_access_token;
+    }
 
+    # Ok... we really don't have an access token... let's try and get one
     my $h = HTTP::Headers->new();
     $h->header( 'Content-Type'	=> "application/json" );
     $h->header( 'Accept'	=> "application/json" );
@@ -271,6 +298,7 @@ sub valid_access_token {
     }else{
         die( "Cannot create valid access_token without a refresh_token or username and password" );
     }
+
     $self->log->trace( "Response from getting access_token:\n" . Dump( $data ) ) if $self->log->is_trace();
     my $expire_time = time() + $data->{expires_in};
     $self->log->debug( "Got new access_token: $data->{access_token} which expires at " . localtime( $expire_time ) );
@@ -278,8 +306,22 @@ sub valid_access_token {
         $self->log->debug( "Got new refresh_token: $data->{refresh_token}" );
         $self->_set_refresh_token( $data->{refresh_token} );
     }
+    $self->_set_username( $params{username} );
     $self->_set_access_token( $data->{access_token} );
     $self->_set_access_token_expires( $expire_time );
+    
+    if( $self->credentials_file ){
+        $self->log->debug( "Writing valid credentials back to file: " . $self->credentials_file );
+        my $credentials = {
+            username                => $self->username,
+            access_token            => $self->_access_token,
+            refresh_token           => $self->refresh_token,
+            access_token_expires    => strftime( '%Y-%m-%dT%H:%M:%SZ', gmtime( $self->_access_token_expires ) ),
+        };
+        $credentials->{password} = $self->password if $self->password;
+
+        DumpFile( $self->credentials_file, $credentials );
+    }
     return $data->{access_token};
 }
 
@@ -291,7 +333,7 @@ Returns true if a valid access token exists (with at least 5 seconds validity re
 
 sub access_token_is_valid {
     my $self = shift;
-    return 1 if( $self->_access_token and $self->_access_token_expires > ( time() + 5 ) );
+    return 1 if( $self->_access_token and $self->_access_token_expires and $self->_access_token_expires > ( time() + 5 ) );
     return 0;
 }
 
