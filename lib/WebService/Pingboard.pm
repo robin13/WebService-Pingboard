@@ -78,6 +78,26 @@ has 'username' => (
     writer      => '_set_username',
     );
 
+=item client_id
+
+=cut
+has 'client_id' => (
+        is          => 'ro',
+        isa         => 'Str',
+        required    => 0,
+        writer      => '_set_client_id',
+        );
+
+=item client_secret
+
+=cut
+has 'client_secret' => (
+        is          => 'ro',
+        isa         => 'Str',
+        required    => 0,
+        writer      => '_set_client_secret',
+        );
+
 =item credentials_file
 
 =cut
@@ -89,7 +109,7 @@ has 'credentials_file' => (
 
 =item timeout
 
-Timeout when communicating with Pingboard in seconds.  Optional.  Default: 10 
+Timeout when communicating with Pingboard in seconds.  Optional.  Default: 10
 Will only be in effect if you allow the useragent to be built in this module.
 
 =cut
@@ -243,11 +263,13 @@ sub valid_access_token {
         \@_,
         username                => { isa    => 'Str', optional => 1 },
         password                => { isa    => 'Str', optional => 1 },
+        client_id               => { isa    => 'Str', optional => 1 },
+        client_secret           => { isa    => 'Str', optional => 1 },
         refresh_token           => { isa    => 'Str', optional => 1 },
         access_token            => { isa    => 'Str', optional => 1 },
         access_token_expires    => { isa    => 'Str', optional => 1 },
 	);
-    
+
     # If we still have a valid access token, use this
     if( $self->access_token_is_valid ){
         return $self->_access_token;
@@ -256,18 +278,20 @@ sub valid_access_token {
     # We do not have valid credentials in the object already, so let's gather from all sources and try again
     $params{username}       ||= $self->username;
     $params{password}       ||= $self->password;
+    $params{client_id}      ||= $self->client_id;
+    $params{client_secret}  ||= $self->client_secret;
     $params{refresh_token}  ||= $self->refresh_token;
     $params{access_token}   ||= $self->_access_token;
     $params{access_token_expires}   ||= $self->_access_token_expires;
     if( not $params{username} and $self->credentials_file ){
         my $credentials = LoadFile ( $self->credentials_file );
-        foreach( qw/username password refresh_token access_token access_token_expires/ ){
+        foreach( qw/username password client_id client_secret refresh_token access_token access_token_expires/ ){
             $params{$_} ||= $credentials->{$_} if( $credentials->{$_} );
         }
     }
     $self->_set_access_token_expires( gmdate(  $params{access_token_expires} )->epoch ) if( $params{access_token_expires} );
     $self->_set_access_token( $params{access_token} ) if( $params{access_token} );
-    
+
     # Test again if we now have a valid access token
     if( $self->access_token_is_valid ){
         return $self->_access_token;
@@ -279,6 +303,7 @@ sub valid_access_token {
     $h->header( 'Accept'	=> "application/json" );
 
     my $data;
+    #Only password flow allows refresh tokens
     if( $params{username} and $params{refresh_token} ){
         $self->log->debug( "Requesting fresh access_token with refresh_token: $params{refresh_token}" );
         $data = $self->_request_from_api(
@@ -295,8 +320,16 @@ sub valid_access_token {
             uri         => 'https://app.pingboard.com/oauth/token',
             options     => sprintf( 'username=%s&password=%s&grant_type=password', $params{username}, uri_encode( $params{password} ) ),
             );
+    }elsif( $params{client_id} and $params{client_secret} ){
+        $self->log->debug( "Requesting fresh access_token with client_id and client_secret for: $params{client_id}" );
+        $data = $self->_request_from_api(
+            method      => 'POST',
+            headers     => $h,
+            uri         => 'https://app.pingboard.com/oauth/token',
+            options     => sprintf( 'client_id=%s&client_secret=%s&grant_type=client_credentials', $params{client_id}, $params{client_secret} ),
+            );
     }else{
-        die( "Cannot create valid access_token without a refresh_token or username and password" );
+        die( "Cannot create valid access_token without a refresh_token or client_id and client_secret or username and password" );
     }
 
     $self->log->trace( "Response from getting access_token:\n" . Dump( $data ) ) if $self->log->is_trace();
@@ -306,10 +339,12 @@ sub valid_access_token {
         $self->log->debug( "Got new refresh_token: $data->{refresh_token}" );
         $self->_set_refresh_token( $data->{refresh_token} );
     }
-    $self->_set_username( $params{username} );
+    if ($params{username}) {
+        $self->_set_username( $params{username} );
+    }
     $self->_set_access_token( $data->{access_token} );
     $self->_set_access_token_expires( $expire_time );
-    
+
     if( $self->credentials_file ){
         $self->log->debug( "Writing valid credentials back to file: " . $self->credentials_file );
         my $credentials = {
@@ -546,7 +581,7 @@ sub get_statuses {
 }
 
 =item update_status
- 
+
 Update a Status resource.
 
 Details: http://docs.pingboard.apiary.io/#reference/statuses/status/get-status
@@ -633,7 +668,7 @@ sub create_status {
     return $self->_paged_request_from_api( %params );
 }
 
-=item 
+=item
 
 
 =item clear_cache_object_id
@@ -675,7 +710,7 @@ sub _paged_request_from_api {
         body        => { isa => 'Str', optional => 1 },
     );
     $self->log->trace( "_paged_request_from_api params:\n" . Dump( \%params ) ) if( $self->log->is_trace );
-    
+
     my @results;
     my $page = 1;
 
@@ -686,7 +721,7 @@ sub _paged_request_from_api {
 
     my $response = undef;
     do{
-        my %request_params = ( 
+        my %request_params = (
             method      => $params{method},
             path        => $params{path} . ( $params{path} =~ m/\?/ ? '&' : '?' ) . 'page=' . $page . '&page_size=' . $params{page_size},
             );
@@ -696,8 +731,8 @@ sub _paged_request_from_api {
         $response = $self->_request_from_api( %request_params );
 	push( @results, @{ $response->{$params{field} } } );
 	$page++;
-      }while( $response->{meta}{$params{field}}{page} and 
-              $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and 
+      }while( $response->{meta}{$params{field}}{page} and
+              $response->{meta}{$params{field}}{page} < $response->{meta}{$params{field}}{page_count} and
               ( not $params{limit} or scalar( @results ) < $params{limit} ) );
     return @results;
 }
@@ -788,11 +823,10 @@ sub _request_from_api {
 
 =head1 COPYRIGHT
 
-Copyright 2015, Robin Clarke 
+Copyright 2015, Robin Clarke
 
 =head1 AUTHOR
 
 Robin Clarke <robin@robinclarke.net>
 
 Jeremy Falling <projects@falling.se>
-
