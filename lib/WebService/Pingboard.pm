@@ -13,7 +13,7 @@ use YAML qw/Dump LoadFile DumpFile/;
 use Encode;
 use URI::Encode qw/uri_encode/;
 
-our $VERSION = 0.007;
+our $VERSION = 0.009;
 
 =head1 NAME
 
@@ -361,9 +361,13 @@ sub headers {
 This is a module in development - only a subset of all of the API endpoints have been implemented yet.
 The full documentation is available here: http://docs.pingboard.apiary.io/#
 
+=head2 Generic parameters
+
 Any of the methods below which return paged content accept the parameters:
 
-=over 8
+=over 4
+
+=over 4
 
 =item limit
 
@@ -378,6 +382,10 @@ Optional.  Page size to use when fetching.
 Optional.  Additional url options to add
 
 =back
+
+=back
+
+
 
 
 =over 4
@@ -396,11 +404,22 @@ sub get_users {
         id	    => { isa    => 'Int', optional => 1 },
         limit       => { isa    => 'Int', optional => 1 },
         page_size   => { isa    => 'Int', optional => 1 },
+        email       => { isa    => 'Str', optional => 1 },
+        first_name  => { isa    => 'Str', optional => 1 },
+        last_name   => { isa    => 'Str', optional => 1 },
+        start_date  => { isa    => 'Str', optional => 1 },
+        job_title   => { isa    => 'Str', optional => 1 },
         options     => { isa    => 'Str', optional => 1 },
 	);
     $params{field}  = 'users';
     $params{path}   = '/users' . ( $params{id} ? '/' . $params{id} : '' );
-    delete( $params{id} );
+    foreach( qw/id email first_name last_name start_date job_title/ ){
+        if( $params{$_} ){
+            $params{options} .= ( $params{options} ? '&' : '' ) . $_ . '=' . $params{$_};
+            delete( $params{$_} );
+        }
+    }
+
     return $self->_paged_request_from_api( %params );
 }
 
