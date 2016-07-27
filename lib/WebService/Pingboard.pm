@@ -687,9 +687,6 @@ sub create_status {
     return $self->_paged_request_from_api( %params );
 }
 
-=item
-
-
 =item clear_cache_object_id
 
 Clears an object from the cache.
